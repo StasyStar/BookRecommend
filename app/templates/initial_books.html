@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="welcome-message">
+    <h2>👋 Добро пожаловать, {{ user.username }}!</h2>
+    <p>Пожалуйста, выберите книги, которые вам нравятся</p>
+</div>
+
+<div class="user-actions" style="text-align: center; margin-bottom: 20px;">
+    <form method="post" action="/logout" style="display: inline;">
+        <button type="submit" class="btn btn-logout">🚪 Выйти</button>
+    </form>
+</div>
+
+<div class="instructions">
+    <p>🎯 <strong>Выберите книги, которые вам нравятся</strong> (хотя бы 3)</p>
+    <p>📖 На основе вашего выбора мы создадим персонализированные рекомендации</p>
+    <p id="selected-count">Выбрано книг: 0</p>
+</div>
+
+<form method="post" action="/submit-initial-books/{{ user.id }}" id="books-form">
+    <div class="book-grid">
+        {% for book in books %}
+        <div class="book-card" onclick="toggleBook({{ book.id }})" id="book-card-{{ book.id }}">
+            <label style="display: block; cursor: pointer;">
+                <input type="checkbox"
+                       name="selected_books"
+                       value="{{ book.id }}"
+                       class="book-checkbox"
+                       id="checkbox-{{ book.id }}"
+                       onchange="updateSelection({{ book.id }})"
+                       style="margin-right: 10px; transform: scale(1.3);">
+                <div class="book-title">{{ book.title }}</div>
+                <div class="book-author">{{ book.author }}</div>
+                <div class="book-genre">Жанр: {{ book.genre }}</div>
+            </label>
+        </div>
+        {% endfor %}
+    </div>
+    <div style="text-align: center; margin-top: 30px;">
+        <button type="submit" class="btn btn-success" id="submit-btn">🎁 Получить персонализированные рекомендации</button>
+    </div>
+</form>
+
+<script>
+    let selectedBooks = new Set();
+
+    function toggleBook(bookId) {
+        const checkbox = document.getElementById('checkbox-' + bookId);
+        checkbox.checked = !checkbox.checked;
+        updateSelection(bookId);
+    }
+
+    function updateSelection(bookId) {
+        const checkbox = document.getElementById('checkbox-' + bookId);
+        const bookCard = document.getElementById('book-card-' + bookId);
+
+        if (checkbox.checked) {
+            selectedBooks.add(bookId);
+            bookCard.style.background = '#e8f6f3';
+            bookCard.style.borderColor = '#27ae60';
+            bookCard.style.boxShadow = '0 0 0 2px #27ae60';
+        } else {
+            selectedBooks.delete(bookId);
+            bookCard.style.background = '#f8f9fa';
+            bookCard.style.borderColor = '#e1e8ed';
+            bookCard.style.boxShadow = 'none';
+        }
+
+        // Обновляем счетчик
+        document.getElementById('selected-count').textContent = 'Выбрано книг: ' + selectedBooks.size;
+
+        // Обновляем состояние кнопки
+        const submitBtn = document.getElementById('submit-btn');
+        if (selectedBooks.size >= 3) {
+            submitBtn.disabled = false;
+            submitBtn.style.opacity = '1';
+        } else {
+            submitBtn.disabled = true;
+            submitBtn.style.opacity = '0.6';
+        }
+    }
+
+    // Валидация формы
+    document.getElementById('books-form').addEventListener('submit', function(e) {
+        if (selectedBooks.size < 3) {
+            e.preventDefault();
+            alert('Пожалуйста, выберите хотя бы 3 книги для лучших рекомендаций!');
+            return false;
+        }
+        return true;
+    });
+
+    // Инициализация состояния кнопки
+    document.addEventListener('DOMContentLoaded', function() {
+        const submitBtn = document.getElementById('submit-btn');
+        submitBtn.disabled = true;
+        submitBtn.style.opacity = '0.6';
+    });
+</script>
+
+<style>
+    .book-checkbox {
+        cursor: pointer;
+    }
+</style>
+{% endblock %}

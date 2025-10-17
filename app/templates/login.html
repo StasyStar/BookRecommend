@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Вход в систему рекомендаций книг</h2>
+
+<div class="instructions">
+    <p>📚 <strong>С возвращением!</strong></p>
+    <p>Войдите в свой аккаунт, чтобы продолжить чтение</p>
+</div>
+
+<form method="post" action="/login">
+    <div class="form-group">
+        <label for="email">Email:</label>
+        <input type="email" id="email" name="email" required placeholder="Введите ваш email">
+    </div>
+    <div class="form-group">
+        <label for="password">Пароль:</label>
+        <input type="password" id="password" name="password" required placeholder="Введите ваш пароль">
+    </div>
+    <div style="text-align: center;">
+        <button type="submit" class="btn btn-success">🔑 Войти</button>
+    </div>
+</form>
+
+<div style="text-align: center; margin-top: 20px;">
+    <p>Нет аккаунта? <a href="/" style="color: #3498db;">Зарегистрируйтесь здесь</a></p>
+</div>
+
+{% if request.query_params.get('error') %}
+<div class="error-message" style="background: #ffeaa7; padding: 10px; border-radius: 5px; margin-top: 20px; text-align: center;">
+    <p>⚠️ Пожалуйста, войдите в систему для доступа к этой странице</p>
+</div>
+{% endif %}
+{% endblock %}

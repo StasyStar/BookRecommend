@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="welcome-message">
+    <h2>👋 Добро пожаловать, {{ user.username }}!</h2>
+    <p>Ваш email: {{ user.email }}</p>
+</div>
+
+<div class="user-actions" style="text-align: center; margin-bottom: 30px;">
+    <a href="/recommendations/{{ user.id }}" class="btn btn-success">📚 Мои рекомендации</a>
+    <form method="post" action="/logout" style="display: inline;">
+        <button type="submit" class="btn btn-logout">🚪 Выйти из профиля</button>
+    </form>
+</div>
+
+<h3>Выбранные вами книги:</h3>
+<div class="book-grid">
+    {% for book in selected_books %}
+    <div class="book-card">
+        <div class="book-title">{{ book.title }}</div>
+        <div class="book-author">{{ book.author }}</div>
+        <div class="book-genre">Жанр: {{ book.genre }}</div>
+    </div>
+    {% endfor %}
+</div>
+
+<div style="text-align: center; margin-top: 30px;">
+    <p>Всего выбрано книг: <strong>{{ selected_books|length }}</strong></p>
+</div>
+{% endblock %}

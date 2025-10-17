@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Система рекомендаций книг{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📚 Система рекомендаций книг</h1>
+            <div class="nav-links">
+                <a href="/" class="btn btn-success">Главная</a>
+                {% if request.cookies.get('session_token') %}
+                <a href="/dashboard" class="btn">Мой профиль</a>
+                <form method="post" action="/logout" style="display: inline;">
+                    <button type="submit" class="btn btn-logout">🚪 Выйти</button>
+                </form>
+                {% else %}
+                <a href="/login" class="btn">Войти</a>
+                {% endif %}
+            </div>
+        </div>
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>
