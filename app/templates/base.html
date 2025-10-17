@@ -13,12 +13,12 @@
             <div class="nav-links">
                 <a href="/" class="btn btn-success">Главная</a>
                 {% if request.cookies.get('session_token') %}
-                <a href="/dashboard" class="btn">Мой профиль</a>
+                <a href="/dashboard" class="btn">👤 Мой профиль</a>
                 <form method="post" action="/logout" style="display: inline;">
                     <button type="submit" class="btn btn-logout">🚪 Выйти</button>
                 </form>
                 {% else %}
-                <a href="/login" class="btn">Войти</a>
+                <a href="/login" class="btn">🔑 Войти</a>
                 {% endif %}
             </div>
         </div>
