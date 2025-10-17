@@ -7,6 +7,7 @@ from typing import List
 import random
 import os
 from datetime import datetime, timezone
+import json
 
 from app.database import get_db, engine
 from app.models import Base, User, UserSession
@@ -109,11 +110,10 @@ async def login(
         redirect_url = f"/initial-books/{user.id}"
 
     response = RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
-    # Используем максимальный возраст вместо expires для совместимости
     response.set_cookie(
         key="session_token",
         value=session_token,
-        max_age=7 * 24 * 60 * 60,  # 7 дней в секундах
+        max_age=7 * 24 * 60 * 60,
         httponly=True
     )
     return response
@@ -171,7 +171,7 @@ async def register(
     response.set_cookie(
         key="session_token",
         value=session_token,
-        max_age=7 * 24 * 60 * 60,  # 7 дней в секундах
+        max_age=7 * 24 * 60 * 60,
         httponly=True
     )
     return response
@@ -312,6 +312,118 @@ async def user_profile(
             "selected_books": selected_books_info
         }
     )
+
+
+@app.post("/remove-book/{user_id}")
+async def remove_book(
+        request: Request,
+        user_id: int,
+        db: Session = Depends(get_db)
+):
+    print(f"=== DEBUG: remove-book called for user {user_id} ===")
+
+    # Проверяем, что пользователь авторизован
+    current_user = get_current_user(request, db)
+    if not current_user or current_user.id != user_id:
+        print("DEBUG: User not authorized")
+        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+
+    form_data = await request.form()
+    book_id_to_remove = form_data.get("book_id")
+
+    print(f"DEBUG: Form data: {dict(form_data)}")
+    print(f"DEBUG: Book ID to remove: {book_id_to_remove}")
+
+    if not book_id_to_remove:
+        print("DEBUG: No book_id provided")
+        raise HTTPException(status_code=400, detail="Не указана книга для удаления")
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        print("DEBUG: User not found")
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    print(f"DEBUG: User selected_books before: {user.selected_books}")
+    print(f"DEBUG: User ID: {user.id}")
+
+    if not user.selected_books:
+        print("DEBUG: No selected books")
+        raise HTTPException(status_code=400, detail="Нет выбранных книг")
+
+    # Преобразуем book_id в int
+    try:
+        book_id_to_remove = int(book_id_to_remove)
+    except ValueError:
+        print("DEBUG: Invalid book_id format")
+        raise HTTPException(status_code=400, detail="Неверный формат ID книги")
+
+    # Удаляем книгу из списка выбранных
+    if book_id_to_remove in user.selected_books:
+        # Создаем новый список без удаляемой книги
+        new_selected_books = [book_id for book_id in user.selected_books if book_id != book_id_to_remove]
+        user.selected_books = new_selected_books
+
+        print(f"DEBUG: Book {book_id_to_remove} removed")
+        print(f"DEBUG: User selected_books after: {user.selected_books}")
+
+        # Если книг не осталось, сбрасываем флаг
+        if not user.selected_books:
+            user.initial_books_selected = False
+            user.preferences = None
+            print("DEBUG: All books removed, resetting flags")
+
+        try:
+            db.commit()
+            print("DEBUG: Database committed successfully")
+
+            # Проверяем, что изменения сохранились
+            db.refresh(user)
+            print(f"DEBUG: User selected_books after refresh: {user.selected_books}")
+
+        except Exception as e:
+            print(f"DEBUG: Database commit failed: {e}")
+            db.rollback()
+            raise HTTPException(status_code=500, detail="Ошибка при сохранении изменений")
+
+        # Переобучаем модель, если есть оставшиеся книги
+        if user.selected_books:
+            try:
+                preferences = recommender.train_model(user.selected_books)
+                user.preferences = preferences
+                db.commit()
+                print("DEBUG: Model retrained and committed")
+            except Exception as e:
+                print(f"DEBUG: Model retraining failed: {e}")
+                # Не прерываем выполнение если переобучение не удалось
+    else:
+        print(f"DEBUG: Book {book_id_to_remove} not found in selected_books")
+
+    return RedirectResponse(url=f"/profile/{user_id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/clear-all-books/{user_id}")
+async def clear_all_books(
+        request: Request,
+        user_id: int,
+        db: Session = Depends(get_db)
+):
+    # Проверяем, что пользователь авторизован
+    current_user = get_current_user(request, db)
+    if not current_user or current_user.id != user_id:
+        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    # Очищаем все выбранные книги
+    user.selected_books = []
+    user.initial_books_selected = False
+    user.preferences = None
+
+    db.commit()
+
+    return RedirectResponse(url=f"/profile/{user_id}", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @app.post("/logout")

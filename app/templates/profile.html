@@ -13,10 +13,31 @@
     </form>
 </div>
 
-<h3>Выбранные вами книги:</h3>
+{% if selected_books %}
+<div class="actions-section">
+    <h3>🗑️ Управление выбранными книгами</h3>
+    <form method="post" action="/clear-all-books/{{ user.id }}" style="display: inline;">
+        <button type="submit" class="btn clear-all-btn"
+                onclick="return confirm('Вы уверены, что хотите удалить все выбранные книги?')">
+            🗑️ Удалить все книги
+        </button>
+    </form>
+</div>
+
+<h3>📖 Выбранные вами книги:</h3>
 <div class="book-grid">
     {% for book in selected_books %}
-    <div class="book-card">
+    <div class="book-card book-card-with-actions">
+        <div class="book-actions">
+            <form method="post" action="/remove-book/{{ user.id }}" id="form-{{ book.id }}">
+                <input type="hidden" name="book_id" value="{{ book.id }}">
+                <button type="button" class="remove-btn"
+                        onclick="removeBook({{ book.id }}, '{{ book.title }}')"
+                        title="Удалить книгу">
+                    🗑️
+                </button>
+            </form>
+        </div>
         <div class="book-title">{{ book.title }}</div>
         <div class="book-author">{{ book.author }}</div>
         <div class="book-genre">Жанр: {{ book.genre }}</div>
@@ -27,4 +48,50 @@
 <div style="text-align: center; margin-top: 30px;">
     <p>Всего выбрано книг: <strong>{{ selected_books|length }}</strong></p>
 </div>
+
+{% else %}
+<div class="empty-message">
+    <h3>📚 У вас пока нет выбранных книг</h3>
+    <p>Чтобы получить персонализированные рекомендации, выберите книги которые вам нравятся</p>
+    <a href="/initial-books/{{ user.id }}" class="btn btn-success" style="margin-top: 15px;">
+        🎯 Выбрать книги
+    </a>
+</div>
+{% endif %}
+
+<script>
+function removeBook(bookId, bookTitle) {
+    if (confirm('Удалить книгу "' + bookTitle + '" из выбранных?')) {
+        // Находим форму и отправляем ее
+        const form = document.getElementById('form-' + bookId);
+        if (form) {
+            form.submit();
+        } else {
+            console.error('Form not found for book:', bookId);
+        }
+    }
+}
+
+// Добавляем обработчики для лучшего UX
+document.addEventListener('DOMContentLoaded', function() {
+    const bookCards = document.querySelectorAll('.book-card');
+    bookCards.forEach(card => {
+        card.addEventListener('mouseenter', function() {
+            const actions = this.querySelector('.book-actions');
+            if (actions) actions.style.opacity = '1';
+        });
+        card.addEventListener('mouseleave', function() {
+            const actions = this.querySelector('.book-actions');
+            if (actions) actions.style.opacity = '0';
+        });
+    });
+
+    // Временно показываем все корзинки для отладки
+    setTimeout(() => {
+        document.querySelectorAll('.book-actions').forEach(action => {
+            action.style.opacity = '1';
+        });
+    }, 1000);
+});
+</script>
 {% endblock %}
