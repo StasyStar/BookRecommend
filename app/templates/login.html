@@ -1,24 +1,32 @@
 {% extends "base.html" %}
 
+{% block title %}Book4U - Вход{% endblock %}
+
 {% block content %}
-<h2>Вход в систему рекомендаций книг</h2>
+<h2>Вход в Book4U</h2>
 
 <div class="instructions">
-    <p>📚 <strong>С возвращением!</strong></p>
+    <p>📚 <strong>С возвращением в Book4U!</strong></p>
     <p>Войдите в свой аккаунт, чтобы продолжить чтение</p>
 </div>
 
-<form method="post" action="/login">
+{% if error %}
+<div class="error-message" style="background: #ffeaa7; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: center; border-left: 4px solid #e74c3c;">
+    <p style="margin: 0; color: #c0392b; font-weight: bold;">⚠️ {{ error }}</p>
+</div>
+{% endif %}
+
+<form method="post" action="/login" id="login-form">
     <div class="form-group">
         <label for="email">Email:</label>
-        <input type="email" id="email" name="email" required placeholder="Введите ваш email">
+        <input type="email" id="email" name="email" required placeholder="Введите ваш email" value="{{ email or '' }}">
     </div>
     <div class="form-group">
         <label for="password">Пароль:</label>
         <input type="password" id="password" name="password" required placeholder="Введите ваш пароль">
     </div>
     <div style="text-align: center;">
-        <button type="submit" class="btn btn-success">🔑 Войти</button>
+        <button type="submit" class="btn btn-success" id="submit-btn">🔑 Войти</button>
     </div>
 </form>
 
@@ -26,9 +34,47 @@
     <p>Нет аккаунта? <a href="/" style="color: #3498db;">Зарегистрируйтесь здесь</a></p>
 </div>
 
-{% if request.query_params.get('error') %}
-<div class="error-message" style="background: #ffeaa7; padding: 10px; border-radius: 5px; margin-top: 20px; text-align: center;">
-    <p>⚠️ Пожалуйста, войдите в систему для доступа к этой странице</p>
-</div>
-{% endif %}
+<script>
+document.getElementById('login-form').addEventListener('submit', function(e) {
+    const submitBtn = document.getElementById('submit-btn');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '⏳ Вход...';
+});
+</script>
+
+<style>
+.error-message {
+    animation: shake 0.5s ease-in-out;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #e1e8ed;
+    border-radius: 6px;
+    font-size: 16px;
+    transition: border-color 0.3s ease;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.form-group input.error {
+    border-color: #e74c3c;
+    box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.1);
+}
+</style>
 {% endblock %}

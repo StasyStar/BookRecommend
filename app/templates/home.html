@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Book4U - Главная{% endblock %}
+
+{% block head %}
+<!-- Подключение CSS для главной страницы -->
+<link rel="stylesheet" href="/static/css/home.css">
+{% endblock %}
+
+{% block content %}
+<div class="welcome-message">
+    <h2>👋 Добро пожаловать в Book4U, {{ user.username }}!</h2>
+    <p>Управляйте вашими предпочтениями и получайте персонализированные рекомендации</p>
+</div>
+
+<div class="instructions">
+    <h3>🎯 Управление вашими предпочтениями</h3>
+    <p>Нажимайте на книги, которые вам нравятся. Выбранные книги будут выделены зеленым цветом.</p>
+    <p>Чем больше книг вы отметите, тем точнее будут рекомендации Book4U!</p>
+    <p id="selected-count">Сейчас выбрано: <strong>{{ selected_books|length }}</strong> книг</p>
+</div>
+
+<div class="search-section">
+    <input type="text" id="book-search" placeholder="🔍 Поиск книг по названию или автору...">
+</div>
+
+<form id="books-form">
+    <input type="hidden" name="user_id" value="{{ user.id }}">
+
+    <div class="filter-section">
+        <label>Фильтр по жанрам:</label>
+        <select id="genre-filter">
+            <option value="all">Все жанры</option>
+            <option value="классика">Классика</option>
+            <option value="фэнтези">Фэнтези</option>
+            <option value="фантастика">Фантастика</option>
+            <option value="драма">Драма</option>
+            <option value="детектив">Детектив</option>
+            <option value="роман">Роман</option>
+            <option value="антиутопия">Антиутопия</option>
+            <option value="философия">Философия</option>
+            <option value="сатира">Сатира</option>
+        </select>
+        <button type="button" id="deselect-all" class="btn btn-secondary">Снять все</button>
+    </div>
+
+    <div class="book-grid" id="books-grid">
+        {% for book in all_books %}
+        {% set is_selected = book.id in user.selected_books %}
+        <div class="book-card {% if is_selected %}selected{% endif %}"
+             data-genre="{{ book.genre }}"
+             data-title="{{ book.title.lower() }}"
+             data-author="{{ book.author.lower() }}"
+             data-book-id="{{ book.id }}"
+             onclick="toggleBookSelection({{ book.id }})">
+            <div class="book-info">
+                <div class="book-title">{{ book.title }}</div>
+                <div class="book-author">{{ book.author }}</div>
+                <div class="book-genre">Жанр: {{ book.genre }}</div>
+                {% if is_selected %}
+                <div class="selected-indicator">✓ Выбрано</div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="action-section">
+        <button type="button" class="btn btn-success" id="save-btn" onclick="saveBookSelection()">
+            📚 Перейти к рекомендациям
+        </button>
+        <div id="save-status"></div>
+    </div>
+</form>
+
+<!-- Передача данных из шаблона в JS -->
+<script>
+    window.userData = {
+        selectedBooks: {{ user.selected_books | tojson }},
+        userId: {{ user.id }}
+    };
+</script>
+
+<!-- Подключение JavaScript -->
+<script src="/static/js/home.js"></script>
+{% endblock %}

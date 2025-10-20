@@ -1,16 +1,11 @@
 {% extends "base.html" %}
 
+{% block title %}Book4U - Рекомендации{% endblock %}
+
 {% block content %}
 <div class="welcome-message">
-    <h2>📖 Рекомендации для {{ user.username }}</h2>
-    <p>На основе ваших предпочтений мы подобрали эти книги:</p>
-</div>
-
-<div class="user-actions" style="text-align: center; margin-bottom: 30px;">
-    <a href="/profile/{{ user.id }}" class="btn">👤 Мой профиль</a>
-    <form method="post" action="/logout" style="display: inline;">
-        <button type="submit" class="btn btn-logout">🚪 Выйти</button>
-    </form>
+    <h2>📖 Рекомендации Book4U для {{ user.username }}</h2>
+    <p>На основе ваших предпочтений Book4U подобрал эти книги:</p>
 </div>
 
 <div class="book-grid">

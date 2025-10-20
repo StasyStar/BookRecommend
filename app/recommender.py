@@ -153,6 +153,9 @@ class BookRecommender:
         if sum(y) == len(y):
             raise ValueError("Выбраны все книги")
 
+        # Увеличиваем max_iter для лучшей сходимости при большом количестве данных
+        self.model = LogisticRegression(random_state=42, max_iter=1000)
+
         # Масштабирование признаков
         X_scaled = self.scaler.fit_transform(X)
 
