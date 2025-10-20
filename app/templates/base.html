@@ -3,17 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Система рекомендаций книг{% endblock %}</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <title>{% block title %}Book4U - Рекомендации книг{% endblock %}</title>
+
+    <!-- Основные стили -->
+    <link rel="stylesheet" href="/static/css/style.css">
+
+    <!-- Дополнительные CSS для конкретных страниц -->
+    {% block extra_css %}
+        <link rel="stylesheet" href="/static/css/home.css">
+        <link rel="stylesheet" href="/static/css/profile.css">
+    {% endblock %}
+
+    <!-- Мета-теги -->
+    <meta name="application-name" content="Book4U">
+    <meta name="apple-mobile-web-app-title" content="Book4U">
+    <meta name="description" content="Book4U - Персонализированная система рекомендаций книг">
+
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📚</text></svg>">
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>📚 Система рекомендаций книг</h1>
+            <h1>📚 Book4U - Система рекомендаций книг</h1>
             <div class="nav-links">
-                <a href="/" class="btn btn-success">Главная</a>
+                <a href="/" class="btn btn-success">🏠 Главная</a>
                 {% if request.cookies.get('session_token') %}
-                <a href="/dashboard" class="btn">👤 Мой профиль</a>
+                <a href="/recommendations/{{ user.id if user else '#' }}" class="btn">📚 Рекомендации</a>
+                <a href="/profile/{{ user.id if user else '#' }}" class="btn">👤 Профиль</a>
                 <form method="post" action="/logout" style="display: inline;">
                     <button type="submit" class="btn btn-logout">🚪 Выйти</button>
                 </form>
@@ -22,7 +39,18 @@
                 {% endif %}
             </div>
         </div>
+
+        <!-- Основной контент -->
         {% block content %}{% endblock %}
     </div>
+
+    <!-- Основные скрипты -->
+    <script src="/static/js/main.js"></script>
+
+    <!-- Дополнительные JS для конкретных страниц -->
+    {% block extra_js %}
+        <script src="/static/js/home.js"></script>
+        <script src="/static/js/profile.js"></script>
+    {% endblock %}
 </body>
 </html>

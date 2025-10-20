@@ -1,40 +1,49 @@
 from fastapi import FastAPI, Request, Depends, HTTPException, Form, status, Response
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
-from typing import List
 import random
 import os
 from datetime import datetime, timezone
-import json
+from contextlib import asynccontextmanager
 
 from app.database import get_db, engine
 from app.models import Base, User, UserSession
 from app.recommender import recommender
-from app.auth import get_password_hash, verify_password, generate_session_token, get_session_expiry
+from app.auth import get_password_hash, verify_password, generate_session_token, get_session_expiry, \
+    validate_password_strength
 
 # Создание таблиц
 Base.metadata.create_all(bind=engine)
-
-app = FastAPI(title="Book Recommendation System")
 
 # Создаем директории если их нет
 os.makedirs("app/templates", exist_ok=True)
 os.makedirs("static", exist_ok=True)
 os.makedirs("data", exist_ok=True)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    await recommender.load_books_data()
+    yield
+    # Shutdown
+    pass
+
+
+app = FastAPI(
+    title="Book4U - Система рекомендаций книг",
+    description="Персонализированная система рекомендаций книг Book4U",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
 # Настройка шаблонов
 templates = Jinja2Templates(directory="app/templates")
 
 # Монтирование статических файлов
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
-
-# Загрузка данных о книгах при запуске
-@app.on_event("startup")
-async def startup_event():
-    await recommender.load_books_data()
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)):
@@ -57,17 +66,103 @@ def get_current_user(request: Request, db: Session = Depends(get_db)):
     return user
 
 
+async def require_auth(request: Request, db: Session = Depends(get_db), user_id: int = None):
+    """Проверка авторизации пользователя"""
+    current_user = get_current_user(request, db)
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Не авторизован")
+
+    if user_id and current_user.id != user_id:
+        raise HTTPException(status_code=403, detail="Доступ запрещен")
+
+    return current_user
+
+
+async def get_user_books_data(user):
+    """Получение данных о книгах пользователя"""
+    books_data = await recommender.load_books_data()
+    all_books = books_data['initial_books'] + books_data['all_books']
+
+    user_books = []
+    if user.selected_books:
+        for book in all_books:
+            if book['id'] in user.selected_books:
+                user_books.append(book)
+
+    return user_books, all_books
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request, db: Session = Depends(get_db)):
     # Проверяем, есть ли активная сессия
     current_user = get_current_user(request, db)
-    if current_user:
-        if current_user.initial_books_selected:
-            return RedirectResponse(url=f"/profile/{current_user.id}", status_code=status.HTTP_303_SEE_OTHER)
-        else:
-            return RedirectResponse(url=f"/initial-books/{current_user.id}", status_code=status.HTTP_303_SEE_OTHER)
 
-    return templates.TemplateResponse("register.html", {"request": request})
+    if current_user:
+        # Если пользователь авторизован, показываем главную с книгами
+        user_books, all_books = await get_user_books_data(current_user)
+
+        return templates.TemplateResponse(
+            "home.html",
+            {
+                "request": request,
+                "user": current_user,
+                "selected_books": user_books,
+                "all_books": all_books
+            }
+        )
+    else:
+        # Если не авторизован, показываем страницу регистрации
+        return templates.TemplateResponse("register.html", {"request": request})
+
+
+@app.post("/update-books/{user_id}")
+async def update_books(
+        request: Request,
+        user_id: int,
+        db: Session = Depends(get_db)
+):
+    current_user = await require_auth(request, db, user_id)
+
+    form_data = await request.form()
+    selected_books = form_data.getlist("selected_books")
+
+    # Преобразуем в int
+    selected_books = [int(book_id) for book_id in selected_books] if selected_books else []
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return JSONResponse(
+            status_code=404,
+            content={"success": False, "error": "Пользователь не найден"}
+        )
+
+    try:
+        # Обновляем выбранные книги
+        user.selected_books = selected_books
+
+        # Если есть выбранные книги, устанавливаем флаг
+        if selected_books:
+            user.initial_books_selected = True
+            # Переобучаем модель
+            preferences = recommender.train_model(selected_books)
+            user.preferences = preferences
+        else:
+            user.initial_books_selected = False
+            user.preferences = None
+
+        db.commit()
+
+        return JSONResponse(
+            status_code=200,
+            content={"success": True, "message": "Книги обновлены"}
+        )
+
+    except Exception as e:
+        db.rollback()
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": f"Ошибка при обновлении: {str(e)}"}
+        )
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -85,9 +180,14 @@ async def login(
     # Ищем пользователя по email
     user = db.query(User).filter(User.email == email).first()
     if not user or not verify_password(password, user.hashed_password):
-        raise HTTPException(
-            status_code=400,
-            detail="Неверный email или пароль"
+        # Возвращаем страницу входа с сообщением об ошибке
+        return templates.TemplateResponse(
+            "login.html",
+            {
+                "request": request,
+                "error": "Неверный email или пароль",
+                "email": email  # Сохраняем введенный email для удобства
+            }
         )
 
     # Создаем новую сессию
@@ -133,9 +233,28 @@ async def register(
     ).first()
 
     if existing_user:
-        raise HTTPException(
-            status_code=400,
-            detail="Пользователь с таким именем или email уже существует"
+        # Возвращаем страницу регистрации с ошибкой
+        return templates.TemplateResponse(
+            "register.html",
+            {
+                "request": request,
+                "error": "Пользователь с таким именем или email уже существует",
+                "username": username,
+                "email": email
+            }
+        )
+
+    # Проверка сложности пароля
+    is_valid, password_error = validate_password_strength(password)
+    if not is_valid:
+        return templates.TemplateResponse(
+            "register.html",
+            {
+                "request": request,
+                "error": password_error,
+                "username": username,
+                "email": email
+            }
         )
 
     # Создание нового пользователя
@@ -179,26 +298,19 @@ async def register(
 
 @app.get("/initial-books/{user_id}", response_class=HTMLResponse)
 async def initial_books(request: Request, user_id: int, db: Session = Depends(get_db)):
-    # Проверяем, что пользователь авторизован
-    current_user = get_current_user(request, db)
-    if not current_user or current_user.id != user_id:
-        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
-
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    current_user = await require_auth(request, db, user_id)
 
     books_data = await recommender.load_books_data()
     initial_books = books_data['initial_books']
 
-    # Выбираем случайные 10 книг из начального набора
-    selected_books = random.sample(initial_books, min(10, len(initial_books)))
+    # Увеличиваем количество показываемых книг до 20
+    selected_books = random.sample(initial_books, min(20, len(initial_books)))
 
     return templates.TemplateResponse(
         "initial_books.html",
         {
             "request": request,
-            "user": user,
+            "user": current_user,
             "books": selected_books
         }
     )
@@ -210,10 +322,7 @@ async def submit_initial_books(
         user_id: int,
         db: Session = Depends(get_db)
 ):
-    # Проверяем, что пользователь авторизован
-    current_user = get_current_user(request, db)
-    if not current_user or current_user.id != user_id:
-        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+    current_user = await require_auth(request, db, user_id)
 
     form_data = await request.form()
     selected_books = form_data.getlist("selected_books")
@@ -255,16 +364,9 @@ async def get_recommendations(
         user_id: int,
         db: Session = Depends(get_db)
 ):
-    # Проверяем, что пользователь авторизован
-    current_user = get_current_user(request, db)
-    if not current_user or current_user.id != user_id:
-        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+    current_user = await require_auth(request, db, user_id)
 
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-
-    if not user.initial_books_selected:
+    if not current_user.initial_books_selected:
         raise HTTPException(status_code=400, detail="Сначала выберите начальные книги")
 
     # Получение рекомендаций
@@ -274,7 +376,7 @@ async def get_recommendations(
         "recommendations.html",
         {
             "request": request,
-            "user": user,
+            "user": current_user,
             "recommendations": recommendations
         }
     )
@@ -286,29 +388,15 @@ async def user_profile(
         user_id: int,
         db: Session = Depends(get_db)
 ):
-    # Проверяем, что пользователь авторизован
-    current_user = get_current_user(request, db)
-    if not current_user or current_user.id != user_id:
-        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+    current_user = await require_auth(request, db, user_id)
 
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-
-    books_data = await recommender.load_books_data()
-    all_books = books_data['initial_books'] + books_data['all_books']
-
-    selected_books_info = []
-    if user.selected_books:
-        for book in all_books:
-            if book['id'] in user.selected_books:
-                selected_books_info.append(book)
+    selected_books_info, _ = await get_user_books_data(current_user)
 
     return templates.TemplateResponse(
         "profile.html",
         {
             "request": request,
-            "user": user,
+            "user": current_user,
             "selected_books": selected_books_info
         }
     )
@@ -320,70 +408,49 @@ async def remove_book(
         user_id: int,
         db: Session = Depends(get_db)
 ):
-    print(f"=== DEBUG: remove-book called for user {user_id} ===")
-
-    # Проверяем, что пользователь авторизован
-    current_user = get_current_user(request, db)
-    if not current_user or current_user.id != user_id:
-        print("DEBUG: User not authorized")
-        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+    current_user = await require_auth(request, db, user_id)
 
     form_data = await request.form()
     book_id_to_remove = form_data.get("book_id")
 
-    print(f"DEBUG: Form data: {dict(form_data)}")
-    print(f"DEBUG: Book ID to remove: {book_id_to_remove}")
-
     if not book_id_to_remove:
-        print("DEBUG: No book_id provided")
-        raise HTTPException(status_code=400, detail="Не указана книга для удаления")
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Не указана книга для удаления"}
+        )
 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        print("DEBUG: User not found")
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
-
-    print(f"DEBUG: User selected_books before: {user.selected_books}")
-    print(f"DEBUG: User ID: {user.id}")
+        return JSONResponse(
+            status_code=404,
+            content={"success": False, "error": "Пользователь не найден"}
+        )
 
     if not user.selected_books:
-        print("DEBUG: No selected books")
-        raise HTTPException(status_code=400, detail="Нет выбранных книг")
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Нет выбранных книг"}
+        )
 
     # Преобразуем book_id в int
     try:
         book_id_to_remove = int(book_id_to_remove)
     except ValueError:
-        print("DEBUG: Invalid book_id format")
-        raise HTTPException(status_code=400, detail="Неверный формат ID книги")
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Неверный формат ID книги"}
+        )
 
     # Удаляем книгу из списка выбранных
     if book_id_to_remove in user.selected_books:
-        # Создаем новый список без удаляемой книги
-        new_selected_books = [book_id for book_id in user.selected_books if book_id != book_id_to_remove]
-        user.selected_books = new_selected_books
-
-        print(f"DEBUG: Book {book_id_to_remove} removed")
-        print(f"DEBUG: User selected_books after: {user.selected_books}")
+        user.selected_books.remove(book_id_to_remove)
 
         # Если книг не осталось, сбрасываем флаг
         if not user.selected_books:
             user.initial_books_selected = False
             user.preferences = None
-            print("DEBUG: All books removed, resetting flags")
 
-        try:
-            db.commit()
-            print("DEBUG: Database committed successfully")
-
-            # Проверяем, что изменения сохранились
-            db.refresh(user)
-            print(f"DEBUG: User selected_books after refresh: {user.selected_books}")
-
-        except Exception as e:
-            print(f"DEBUG: Database commit failed: {e}")
-            db.rollback()
-            raise HTTPException(status_code=500, detail="Ошибка при сохранении изменений")
+        db.commit()
 
         # Переобучаем модель, если есть оставшиеся книги
         if user.selected_books:
@@ -391,14 +458,18 @@ async def remove_book(
                 preferences = recommender.train_model(user.selected_books)
                 user.preferences = preferences
                 db.commit()
-                print("DEBUG: Model retrained and committed")
             except Exception as e:
                 print(f"DEBUG: Model retraining failed: {e}")
-                # Не прерываем выполнение если переобучение не удалось
-    else:
-        print(f"DEBUG: Book {book_id_to_remove} not found in selected_books")
 
-    return RedirectResponse(url=f"/profile/{user_id}", status_code=status.HTTP_303_SEE_OTHER)
+        return JSONResponse(
+            status_code=200,
+            content={"success": True, "message": "Книга удалена"}
+        )
+    else:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Книга не найдена в выбранных"}
+        )
 
 
 @app.post("/clear-all-books/{user_id}")
@@ -407,14 +478,14 @@ async def clear_all_books(
         user_id: int,
         db: Session = Depends(get_db)
 ):
-    # Проверяем, что пользователь авторизован
-    current_user = get_current_user(request, db)
-    if not current_user or current_user.id != user_id:
-        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+    current_user = await require_auth(request, db, user_id)
 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
-        raise HTTPException(status_code=404, detail="Пользователь не найден")
+        return JSONResponse(
+            status_code=404,
+            content={"success": False, "error": "Пользователь не найден"}
+        )
 
     # Очищаем все выбранные книги
     user.selected_books = []
@@ -423,7 +494,10 @@ async def clear_all_books(
 
     db.commit()
 
-    return RedirectResponse(url=f"/profile/{user_id}", status_code=status.HTTP_303_SEE_OTHER)
+    return JSONResponse(
+        status_code=200,
+        content={"success": True, "message": "Все книги удалены"}
+    )
 
 
 @app.post("/logout")

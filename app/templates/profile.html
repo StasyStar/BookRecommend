@@ -1,97 +1,65 @@
 {% extends "base.html" %}
 
+{% block title %}Book4U - Профиль{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/profile.css">
+{% endblock %}
+
 {% block content %}
 <div class="welcome-message">
-    <h2>👋 Добро пожаловать, {{ user.username }}!</h2>
+    <h2>👋 Добро пожаловать в Book4U, {{ user.username }}!</h2>
     <p>Ваш email: {{ user.email }}</p>
 </div>
 
-<div class="user-actions" style="text-align: center; margin-bottom: 30px;">
-    <a href="/recommendations/{{ user.id }}" class="btn btn-success">📚 Мои рекомендации</a>
-    <form method="post" action="/logout" style="display: inline;">
-        <button type="submit" class="btn btn-logout">🚪 Выйти из профиля</button>
-    </form>
-</div>
-
 {% if selected_books %}
-<div class="actions-section">
-    <h3>🗑️ Управление выбранными книгами</h3>
-    <form method="post" action="/clear-all-books/{{ user.id }}" style="display: inline;">
-        <button type="submit" class="btn clear-all-btn"
-                onclick="return confirm('Вы уверены, что хотите удалить все выбранные книги?')">
-            🗑️ Удалить все книги
-        </button>
-    </form>
-</div>
-
-<h3>📖 Выбранные вами книги:</h3>
-<div class="book-grid">
-    {% for book in selected_books %}
-    <div class="book-card book-card-with-actions">
-        <div class="book-actions">
-            <form method="post" action="/remove-book/{{ user.id }}" id="form-{{ book.id }}">
-                <input type="hidden" name="book_id" value="{{ book.id }}">
+<h3>📖 Выбранные вами книги в Book4U:</h3>
+<div id="books-container">
+    <div class="book-grid">
+        {% for book in selected_books %}
+        <div class="book-card book-card-with-actions" id="book-card-{{ book.id }}">
+            <div class="book-info">
+                <div class="book-title">{{ book.title }}</div>
+                <div class="book-author">{{ book.author }}</div>
+                <div class="book-genre">Жанр: {{ book.genre }}</div>
+            </div>
+            <div class="book-actions">
                 <button type="button" class="remove-btn"
-                        onclick="removeBook({{ book.id }}, '{{ book.title }}')"
+                        onclick="removeBook({{ book.id }}, '{{ book.title|replace("'", "\\'") }}')"
                         title="Удалить книгу">
                     🗑️
                 </button>
-            </form>
+            </div>
         </div>
-        <div class="book-title">{{ book.title }}</div>
-        <div class="book-author">{{ book.author }}</div>
-        <div class="book-genre">Жанр: {{ book.genre }}</div>
+        {% endfor %}
     </div>
-    {% endfor %}
 </div>
 
 <div style="text-align: center; margin-top: 30px;">
-    <p>Всего выбрано книг: <strong>{{ selected_books|length }}</strong></p>
+    <p>Всего выбрано книг в Book4U: <strong id="books-count">{{ selected_books|length }}</strong></p>
+
+    <!-- Заменяем форму на обычную кнопку -->
+    <button type="button" class="btn clear-all-btn">
+        🗑️ Удалить все книги
+    </button>
 </div>
 
 {% else %}
 <div class="empty-message">
-    <h3>📚 У вас пока нет выбранных книг</h3>
+    <h3>📚 У вас пока нет выбранных книг в Book4U</h3>
     <p>Чтобы получить персонализированные рекомендации, выберите книги которые вам нравятся</p>
-    <a href="/initial-books/{{ user.id }}" class="btn btn-success" style="margin-top: 15px;">
+    <a href="/" class="btn btn-success" style="margin-top: 15px;">
         🎯 Выбрать книги
     </a>
 </div>
 {% endif %}
+{% endblock %}
 
+{% block extra_js %}
 <script>
-function removeBook(bookId, bookTitle) {
-    if (confirm('Удалить книгу "' + bookTitle + '" из выбранных?')) {
-        // Находим форму и отправляем ее
-        const form = document.getElementById('form-' + bookId);
-        if (form) {
-            form.submit();
-        } else {
-            console.error('Form not found for book:', bookId);
-        }
-    }
-}
-
-// Добавляем обработчики для лучшего UX
-document.addEventListener('DOMContentLoaded', function() {
-    const bookCards = document.querySelectorAll('.book-card');
-    bookCards.forEach(card => {
-        card.addEventListener('mouseenter', function() {
-            const actions = this.querySelector('.book-actions');
-            if (actions) actions.style.opacity = '1';
-        });
-        card.addEventListener('mouseleave', function() {
-            const actions = this.querySelector('.book-actions');
-            if (actions) actions.style.opacity = '0';
-        });
-    });
-
-    // Временно показываем все корзинки для отладки
-    setTimeout(() => {
-        document.querySelectorAll('.book-actions').forEach(action => {
-            action.style.opacity = '1';
-        });
-    }, 1000);
-});
+    window.userData = {
+        userId: {{ user.id }}
+    };
 </script>
+<script src="/static/js/profile.js"></script>
 {% endblock %}
